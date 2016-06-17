@@ -724,12 +724,12 @@ func CheckEmptyCriticalSection(f *lint.File) {
 		if len(block.List) < 2 {
 			return true
 		}
-		for i := range block.List {
+		for i := range block.List[:len(block.List)-1] {
 			if i == len(block.List)-1 {
 				break
 			}
 
-			mutexParams := func(s ast.Stmt) ([]string, string, bool) {
+			mutexParams := func(s ast.Stmt) (selectorTokens []string, funFullName string, ok bool) {
 				expr, ok := s.(*ast.ExprStmt)
 				if !ok {
 					return nil, "", false

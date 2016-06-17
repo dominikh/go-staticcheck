@@ -53,3 +53,9 @@ func fn5() {
 	i++
 	x.Unlock()
 }
+
+func fn6() {
+	x := &sync.Mutex{}
+	x.Lock()
+	x.Unlock() // MATCH /empty critical section/
+}
