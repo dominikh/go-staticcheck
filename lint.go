@@ -717,18 +717,18 @@ func CheckEarlyDefer(f *lint.File) {
 
 func CheckEmptyCriticalSection(f *lint.File) {
 
-	mutexParams := func(s ast.Stmt) (selectorTokens []string, funFullName string, ok bool) {
+	mutexParams := func(s ast.Stmt) (selectorTokens []string, selectorType string, funFullName string, ok bool) {
 		expr, ok := s.(*ast.ExprStmt)
 		if !ok {
-			return nil, "", false
+			return nil, "", "", false
 		}
 		call, ok := expr.X.(*ast.CallExpr)
 		if !ok {
-			return nil, "", false
+			return nil, "", "", false
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
 		if !ok {
-			return nil, "", false
+			return nil, "", "", false
 		}
 
 		// Make sure it's chain of identifiers without any function calls
@@ -743,17 +743,16 @@ func CheckEmptyCriticalSection(f *lint.File) {
 				chain = append(chain, s.Sel.Name)
 				nsel = s.X
 			default:
-				return nil, "", false
+				return nil, "", "", false
 			}
 		}
 
 		fn, ok := f.Pkg.TypesInfo.ObjectOf(sel.Sel).(*types.Func)
 		if !ok {
-			return nil, "", false
+			return nil, "", "", false
 		}
-		funName := fn.FullName()
 
-		return chain, funName, true
+		return chain, f.Pkg.TypesInfo.TypeOf(sel.X).String(), fn.FullName(), true
 	}
 
 	fn := func(node ast.Node) bool {
@@ -766,8 +765,8 @@ func CheckEmptyCriticalSection(f *lint.File) {
 		}
 		for i := range block.List[:len(block.List)-1] {
 
-			sel1, method1, ok1 := mutexParams(block.List[i])
-			sel2, method2, ok2 := mutexParams(block.List[i+1])
+			sel1, selT1, method1, ok1 := mutexParams(block.List[i])
+			sel2, selT2, method2, ok2 := mutexParams(block.List[i+1])
 
 			if !ok1 || !ok2 || len(sel1) != len(sel2) {
 				continue
@@ -783,6 +782,7 @@ func CheckEmptyCriticalSection(f *lint.File) {
 
 			if (method1 == "(*sync.Mutex).Lock" && method2 == "(*sync.Mutex).Unlock") ||
 				(method1 == "(*sync.RWMutex).Lock" && method2 == "(*sync.RWMutex).Unlock") ||
+				(selT1 == "sync.Locker" && selT2 == "sync.Locker" && method1 == "(interface).Lock" && method2 == "(interface).Unlock") ||
 				(method1 == "(*sync.RWMutex).RLock" && method2 == "(*sync.RWMutex).RUnlock") {
 				f.Errorf(block.List[i+1], 1, "empty critical section")
 			}

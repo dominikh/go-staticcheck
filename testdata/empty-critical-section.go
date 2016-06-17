@@ -59,3 +59,20 @@ func fn6() {
 	x.Lock()
 	x.Unlock() // MATCH /empty critical section/
 }
+
+func fn7() {
+	x := &struct {
+		sync.Mutex
+	}{}
+
+	x.Lock()
+	x.Unlock() // MATCH /empty critical section/
+}
+
+func fn8() {
+	var x sync.Locker
+	x = new(sync.Mutex)
+
+	x.Lock()
+	x.Unlock() // MATCH /empty critical section/
+}
