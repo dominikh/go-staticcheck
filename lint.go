@@ -37,6 +37,7 @@ var Funcs = []lint.Func{
 	CheckURLs,
 	CheckEarlyDefer,
 	CheckEmptyCriticalSection,
+	CheckIneffectivePointers,
 }
 
 func CheckRegexps(f *lint.File) {
@@ -785,6 +786,24 @@ func CheckEmptyCriticalSection(f *lint.File) {
 			if (method1 == "Lock" && method2 == "Unlock") ||
 				(method1 == "RLock" && method2 == "RUnlock") {
 				f.Errorf(block.List[i+1], 1, "empty critical section")
+			}
+		}
+		return true
+	}
+	f.Walk(fn)
+}
+
+func CheckIneffectivePointers(f *lint.File) {
+	fn := func(node ast.Node) bool {
+		if unary, ok := node.(*ast.UnaryExpr); ok {
+			if _, ok := unary.X.(*ast.StarExpr); ok && unary.Op == token.AND {
+				f.Errorf(unary, 1, "&*T is ineffective. It will be simplified to T.")
+			}
+		}
+
+		if star, ok := node.(*ast.StarExpr); ok {
+			if unary, ok := star.X.(*ast.UnaryExpr); ok && unary.Op == token.AND {
+				f.Errorf(unary, 1, "*&T is ineffective. It will be simplified to T.")
 			}
 		}
 		return true

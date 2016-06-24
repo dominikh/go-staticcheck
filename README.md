@@ -91,6 +91,8 @@ The following things are currently checked by staticcheck:
 - Checks for empty critical sections, e.g. `(*sync.Mutex).Lock`
   directly followed by `(*sync.Mutex).Unlock`. This usually indicates
   a missing `defer`, or otherwise questionable code.
+- Ineffective use of `&*x` or `*&y` when x is of type `*T` and y is
+  of type `T`.
 
 ## Examples
 
