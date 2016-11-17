@@ -96,9 +96,10 @@ func fn10() {
 	x.Lock()
 	if true {
 		return // MATCH /return before mutex unlock/
-	} else {
+	} else if false {
 		return // MATCH /return before mutex unlock/
 	}
+	x.Unlock()
 }
 
 func fn11() {
@@ -289,4 +290,12 @@ func fn26() {
 		return // MATCH /return before mutex unlock/
 	}
 	x.Unlock()
+}
+
+func fn27() {
+	var x sync.Mutex
+	x.Lock()
+	if true {
+		return
+	}
 }

@@ -809,32 +809,50 @@ func CheckReturnBeforeMutexUnlock(f *lint.File) {
 		return fn.Name()
 	}
 
-	var lock, rlock int
+	type lockCounts struct{ lock, rlock, unlock, runlock int }
+	var returnLocks map[*ast.ReturnStmt]lockCounts
+	var funcLocks lockCounts
+
 	var walker visitorFunc
 	walker = visitorFunc(func(n ast.Node) ast.Visitor {
 		switch name := extractFuncName(n); name {
 		case "Lock":
-			lock++
+			funcLocks.lock++
 		case "RLock":
-			rlock++
+			funcLocks.rlock++
 		case "Unlock":
-			lock--
+			funcLocks.unlock++
 		case "RUnlock":
-			rlock--
+			funcLocks.runlock++
 		}
 
-		if _, ok := n.(*ast.ReturnStmt); ok && (lock > 0 || rlock > 0) {
-			f.Errorf(n, "return before mutex unlock")
+		if r, ok := n.(*ast.ReturnStmt); ok {
+			returnLocks[r] = lockCounts{
+				lock:    funcLocks.lock,
+				rlock:   funcLocks.rlock,
+				unlock:  funcLocks.unlock,
+				runlock: funcLocks.runlock,
+			}
 		}
 
 		return walker
 	})
 
 	fn := func(node ast.Node) bool {
-		_, ok := node.(*ast.FuncDecl)
-		if ok {
-			lock, rlock = 0, 0
-			ast.Walk(walker, node)
+		if _, ok := node.(*ast.FuncDecl); !ok {
+			return true
+		}
+
+		funcLocks = lockCounts{}
+		returnLocks = make(map[*ast.ReturnStmt]lockCounts)
+		ast.Walk(walker, node)
+		if funcLocks.unlock == 0 && funcLocks.runlock == 0 {
+			return true
+		}
+		for r, s := range returnLocks {
+			if s.unlock < s.lock || s.runlock < s.rlock {
+				f.Errorf(r, "return before mutex unlock")
+			}
 		}
 		return true
 	}
