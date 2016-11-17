@@ -39,6 +39,7 @@ var Funcs = map[string]lint.Func{
 	"SA2001": CheckEmptyCriticalSection,
 	"SA2002": CheckConcurrentTesting,
 	"SA2003": CheckDeferLock,
+	"SA2004": CheckReturnBeforeMutexUnlock,
 
 	"SA3000": CheckTestMainExit,
 	"SA3001": CheckBenchmarkN,
@@ -782,6 +783,60 @@ func CheckDubiousSyncPoolPointers(f *lint.File) {
 		}
 		f.Errorf(call.Args[0], "non-pointer type %s put into sync.Pool", arg.String())
 		return false
+	}
+	f.Walk(fn)
+}
+
+type visitorFunc func(n ast.Node) ast.Visitor
+
+func (v visitorFunc) Visit(n ast.Node) ast.Visitor { return v(n) }
+
+func CheckReturnBeforeMutexUnlock(f *lint.File) {
+	extractFuncName := func(n ast.Node) string {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return ""
+		}
+		fn, ok := f.Pkg.TypesInfo.ObjectOf(sel.Sel).(*types.Func)
+		if !ok {
+			return ""
+		}
+		sig := fn.Type().(*types.Signature)
+		if sig.Params().Len() != 0 || sig.Results().Len() != 0 {
+			return ""
+		}
+
+		return fn.Name()
+	}
+
+	var lock, rlock int
+	var walker visitorFunc
+	walker = visitorFunc(func(n ast.Node) ast.Visitor {
+		switch name := extractFuncName(n); name {
+		case "Lock":
+			lock++
+		case "RLock":
+			rlock++
+		case "Unlock":
+			lock--
+		case "RUnlock":
+			rlock--
+		}
+
+		if _, ok := n.(*ast.ReturnStmt); ok && (lock > 0 || rlock > 0) {
+			f.Errorf(n, "return before mutex unlock")
+		}
+
+		return walker
+	})
+
+	fn := func(node ast.Node) bool {
+		_, ok := node.(*ast.FuncDecl)
+		if ok {
+			lock, rlock = 0, 0
+			ast.Walk(walker, node)
+		}
+		return true
 	}
 	f.Walk(fn)
 }
