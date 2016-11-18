@@ -787,10 +787,6 @@ func CheckDubiousSyncPoolPointers(f *lint.File) {
 	f.Walk(fn)
 }
 
-type visitorFunc func(n ast.Node) ast.Visitor
-
-func (v visitorFunc) Visit(n ast.Node) ast.Visitor { return v(n) }
-
 func CheckReturnBeforeMutexUnlock(f *lint.File) {
 	extractFuncName := func(n ast.Node) string {
 		sel, ok := n.(*ast.SelectorExpr)
@@ -813,8 +809,7 @@ func CheckReturnBeforeMutexUnlock(f *lint.File) {
 	var returnLocks map[*ast.ReturnStmt]lockCounts
 	var funcLocks lockCounts
 
-	var walker visitorFunc
-	walker = visitorFunc(func(n ast.Node) ast.Visitor {
+	funcVistor := func(n ast.Node) bool {
 		switch name := extractFuncName(n); name {
 		case "Lock":
 			funcLocks.lock++
@@ -835,8 +830,8 @@ func CheckReturnBeforeMutexUnlock(f *lint.File) {
 			}
 		}
 
-		return walker
-	})
+		return true
+	}
 
 	fn := func(node ast.Node) bool {
 		if _, ok := node.(*ast.FuncDecl); !ok {
@@ -845,7 +840,7 @@ func CheckReturnBeforeMutexUnlock(f *lint.File) {
 
 		funcLocks = lockCounts{}
 		returnLocks = make(map[*ast.ReturnStmt]lockCounts)
-		ast.Walk(walker, node)
+		ast.Inspect(node, funcVistor)
 		if funcLocks.unlock == 0 && funcLocks.runlock == 0 {
 			return true
 		}
