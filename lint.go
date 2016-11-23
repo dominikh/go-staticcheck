@@ -39,6 +39,7 @@ var Funcs = map[string]lint.Func{
 	"SA1012": CheckNilContext,
 	"SA1013": CheckSeeker,
 	"SA1014": CheckUnmarshalPointer,
+	"SA1015": CheckUntrappableSignal,
 
 	"SA2000": CheckWaitgroupAdd,
 	"SA2001": CheckEmptyCriticalSection,
@@ -89,6 +90,29 @@ func constantString(f *lint.File, expr ast.Expr) (string, bool) {
 
 func hasType(f *lint.File, expr ast.Expr, name string) bool {
 	return types.TypeString(f.Pkg.TypesInfo.TypeOf(expr), nil) == name
+}
+
+func CheckUntrappableSignal(f *lint.File) {
+	fn := func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if !lint.IsPkgDot(call.Fun, "signal", "Ignore") &&
+			!lint.IsPkgDot(call.Fun, "signal", "Notify") &&
+			!lint.IsPkgDot(call.Fun, "signal", "Reset") {
+			return true
+		}
+		for _, arg := range call.Args {
+			if lint.IsPkgDot(arg, "os", "Kill") ||
+				lint.IsPkgDot(arg, "syscall", "SIGKILL") ||
+				lint.IsPkgDot(arg, "syscall", "SIGSTOP") {
+				f.Errorf(arg, "signal cannot be trapped")
+			}
+		}
+		return true
+	}
+	f.Walk(fn)
 }
 
 func CheckRegexps(f *lint.File) {
