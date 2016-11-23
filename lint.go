@@ -51,6 +51,7 @@ func (c *Checker) Funcs() map[string]lint.Func {
 		"SA1013": c.CheckSeeker,
 		"SA1014": c.CheckUnmarshalPointer,
 		"SA1015": c.CheckLeakyTimeTick,
+		"SA1016": CheckUntrappableSignal,
 
 		"SA2000": c.CheckWaitgroupAdd,
 		"SA2001": c.CheckEmptyCriticalSection,
@@ -239,6 +240,29 @@ func (c *Checker) terminates(fn *ssa.Function) (ret bool) {
 		}
 	}
 	return false
+}
+
+func CheckUntrappableSignal(f *lint.File) {
+	fn := func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if !lint.IsPkgDot(call.Fun, "signal", "Ignore") &&
+			!lint.IsPkgDot(call.Fun, "signal", "Notify") &&
+			!lint.IsPkgDot(call.Fun, "signal", "Reset") {
+			return true
+		}
+		for _, arg := range call.Args {
+			if lint.IsPkgDot(arg, "os", "Kill") ||
+				lint.IsPkgDot(arg, "syscall", "SIGKILL") ||
+				lint.IsPkgDot(arg, "syscall", "SIGSTOP") {
+				f.Errorf(arg, "signal cannot be trapped")
+			}
+		}
+		return true
+	}
+	f.Walk(fn)
 }
 
 func (c *Checker) CheckRegexps(f *lint.File) {
