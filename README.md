@@ -56,6 +56,8 @@ The following things are currently checked by staticcheck:
 | SA1012     | A nil `context.Context` is being passed to a function, consider using context.TODO instead                     |
 | SA1013     | `io.Seeker.Seek` is being called with the `whence` constant as the first argument, but it should be the second |
 | SA1014     | Non-pointer value passed to Unmarshal or Decode                                                                |
+| SA1015     | Trapping a signal that cannot be trapped                                                                       |
+| SA1016     | Sufficient channel buffer size for signals being trapped                                                       |
 |            |                                                                                                                |
 | **SA2???** | **Concurrency issues**                                                                                         |
 | SA2000     | `sync.WaitGroup.Add` called inside the goroutine, leading to a race condition                                  |

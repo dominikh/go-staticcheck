@@ -39,6 +39,8 @@ var Funcs = map[string]lint.Func{
 	"SA1012": CheckNilContext,
 	"SA1013": CheckSeeker,
 	"SA1014": CheckUnmarshalPointer,
+	"SA1015": CheckUntrappableSignal,
+	"SA1016": CheckSignalChannelSize,
 
 	"SA2000": CheckWaitgroupAdd,
 	"SA2001": CheckEmptyCriticalSection,
@@ -89,6 +91,98 @@ func constantString(f *lint.File, expr ast.Expr) (string, bool) {
 
 func hasType(f *lint.File, expr ast.Expr, name string) bool {
 	return types.TypeString(f.Pkg.TypesInfo.TypeOf(expr), nil) == name
+}
+
+func CheckSignalChannelSize(f *lint.File) {
+	fn := func(node ast.Node) bool {
+		// track channel positions and their sizes
+		chanPosSize := make(map[token.Pos]int)
+
+		// find channels of type os.Signal and track their buffer size
+		fn2 := func(node ast.Node) bool {
+			asn, ok := node.(*ast.AssignStmt)
+			if !ok {
+				return true
+			}
+			for i, rhs := range asn.Rhs {
+				call, ok := rhs.(*ast.CallExpr)
+				if !ok {
+					continue
+				}
+				if fn, ok := call.Fun.(*ast.Ident); !ok || fn.Name != "make" {
+					continue
+				}
+				buffSize := 0
+				if len(call.Args) == 2 {
+					if buffSize, ok = constantInt(f, call.Args[1]); !ok {
+						continue
+					}
+				}
+				chanPosSize[asn.Lhs[i].Pos()] = buffSize
+			}
+
+			return false // Don't recurse into make calls
+		}
+		ast.Inspect(node, fn2)
+
+		// Find all calls to signal.Notify and check their channel's size
+		fn3 := func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if !lint.IsPkgDot(call.Fun, "signal", "Notify") {
+				return true
+			}
+			chn, ok := call.Args[0].(*ast.Ident)
+			if !ok {
+				return false
+			}
+			obj := f.Pkg.TypesInfo.ObjectOf(chn)
+			if obj == nil {
+				return true
+			}
+			if buffSize, ok := chanPosSize[obj.Pos()]; ok {
+				if buffSize < len(call.Args)-1 {
+					f.Errorf(chn, "channel buffer size %d is too small to catch %v signal(s)", buffSize, len(call.Args)-1)
+				}
+			}
+			return false // don't recurse into signal.* calls
+		}
+		ast.Inspect(node, fn3)
+
+		return false // fn2/fn3 have already recursed
+	}
+	f.Walk(fn)
+}
+
+func CheckUntrappableSignal(f *lint.File) {
+	fn := func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if !lint.IsPkgDot(call.Fun, "signal", "Ignore") &&
+			!lint.IsPkgDot(call.Fun, "signal", "Notify") &&
+			!lint.IsPkgDot(call.Fun, "signal", "Reset") {
+			return true
+		}
+		for _, callArg := range call.Args {
+			arg := callArg
+			if isTypeName(f, arg, "os", "Signal") && len(arg.(*ast.CallExpr).Args) == 1 {
+				arg = arg.(*ast.CallExpr).Args[0]
+			}
+
+			switch {
+			case lint.IsPkgDot(arg, "os", "Kill"), lint.IsPkgDot(arg, "syscall", "SIGKILL"):
+				f.Errorf(arg, "SIGKILL signal cannot be trapped (did you mean syscall.SIGTERM?)")
+			case lint.IsPkgDot(arg, "syscall", "SIGSTOP"):
+				f.Errorf(arg, "SIGSTOP signal cannot be trapped")
+			}
+		}
+		return true
+	}
+	f.Walk(fn)
 }
 
 func CheckRegexps(f *lint.File) {
@@ -2069,6 +2163,19 @@ func CheckInfiniteRecursion(f *lint.File) {
 		return true
 	}
 	f.Walk(fn)
+}
+
+func isTypeName(f *lint.File, node ast.Node, pkgName, name string) bool {
+	call, ok := node.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	tn, ok := f.Pkg.TypesInfo.ObjectOf(sel.Sel).(*types.TypeName)
+	return ok && tn.Pkg().Name() == pkgName && tn.Name() == name
 }
 
 func isFunctionCallName(f *lint.File, node ast.Node, name string) bool {
