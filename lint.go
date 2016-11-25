@@ -253,11 +253,17 @@ func CheckUntrappableSignal(f *lint.File) {
 			!lint.IsPkgDot(call.Fun, "signal", "Reset") {
 			return true
 		}
-		for _, arg := range call.Args {
-			if lint.IsPkgDot(arg, "os", "Kill") ||
-				lint.IsPkgDot(arg, "syscall", "SIGKILL") ||
-				lint.IsPkgDot(arg, "syscall", "SIGSTOP") {
-				f.Errorf(arg, "signal cannot be trapped")
+		for _, callArg := range call.Args {
+			arg := callArg
+			if isTypeName(f, arg, "os", "Signal") && len(arg.(*ast.CallExpr).Args) == 1 {
+				arg = arg.(*ast.CallExpr).Args[0]
+			}
+
+			switch {
+			case lint.IsPkgDot(arg, "os", "Kill"), lint.IsPkgDot(arg, "syscall", "SIGKILL"):
+				f.Errorf(arg, "SIGKILL signal cannot be trapped (did you mean syscall.SIGTERM?)")
+			case lint.IsPkgDot(arg, "syscall", "SIGSTOP"):
+				f.Errorf(arg, "SIGSTOP signal cannot be trapped")
 			}
 		}
 		return true
@@ -2259,6 +2265,19 @@ func (c *Checker) CheckInfiniteRecursion(f *lint.File) {
 		return true
 	}
 	f.Walk(fn)
+}
+
+func isTypeName(f *lint.File, node ast.Node, pkgName, name string) bool {
+	call, ok := node.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	tn, ok := f.Pkg.TypesInfo.ObjectOf(sel.Sel).(*types.TypeName)
+	return ok && tn.Pkg().Name() == pkgName && tn.Name() == name
 }
 
 func isFunctionCallName(f *lint.File, node ast.Node, name string) bool {
