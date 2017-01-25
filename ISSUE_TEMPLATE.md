@@ -1,0 +1,10 @@
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
+This tool has moved! Please file your issue at https://github.com/dominikh/go-tools instead.
